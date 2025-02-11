@@ -1,0 +1,14 @@
+python inference_server_simulate_yolos.py \
+    --train_whole 1 \
+    --opt adapt \
+    --model r101-fpn-3x \
+    --ckpt ../../models/yolos_s_dwr_remap.pth \
+    --config ../../configs/yolos_s_dwr.yaml \
+    --tag vanilla \
+    --iters 5000 \
+    --eval_interval 1000 \
+    --save_interval 1000 \
+    --image_batch_size 2 \
+    --num_workers 4 \
+    --outputdir ./yolos_s_dwr_001_x2 \
+    --lr 1e-4 

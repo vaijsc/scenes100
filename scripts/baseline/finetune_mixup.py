@@ -1,0 +1,408 @@
+#!python3
+
+import os
+import sys
+import types
+import time
+import datetime
+import gc
+import json
+import copy
+import gzip
+import math
+import random
+import tqdm
+import glob
+import psutil
+import argparse
+from PIL import Image, ImageDraw, ImageFont
+from multiprocessing import Pool as ProcessPool
+
+import numpy as np
+import matplotlib.pyplot as plt
+import skimage.io
+import skvideo.io
+import networkx
+
+import sklearn.utils
+from sklearn.mixture import GaussianMixture
+
+import torch
+import detectron2
+from detectron2.engine import DefaultPredictor, DefaultTrainer, create_ddp_model
+from detectron2.engine.train_loop import SimpleTrainer, AMPTrainer
+from detectron2.evaluation import COCOEvaluator, inference_on_dataset
+from detectron2.data import MetadataCatalog, DatasetCatalog
+from detectron2.structures import BoxMode
+
+import logging
+import weakref
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from utils import IoU, DummyWriter, bbox_inside, intersect_ratios
+from models import get_cfg_base_model
+from decode_training import TrainingFrames
+from base_detector_train import get_coco_dicts
+
+
+video_id_list = ['001', '003', '005', '006', '007', '008', '009', '011', '012', '013', '014', '015', '016', '017', '019', '020', '023', '025', '027', '034', '036', '039', '040', '043', '044', '046', '048', '049', '050', '051', '053', '054', '055', '056', '058', '059', '060', '066', '067', '068', '069', '070', '071', '073', '074', '075', '076', '077', '080', '085', '086', '087', '088', '090', '091', '092', '093', '094', '095', '098', '099', '105', '108', '110', '112', '114', '115', '116', '117', '118', '125', '127', '128', '129', '130', '131', '132', '135', '136', '141', '146', '148', '149', '150', '152', '154', '156', '158', '159', '160', '161', '164', '167', '169', '170', '171', '172', '175', '178', '179']
+thing_classes = ['person', 'vehicle']
+bbox_rgbs = ['#FF0000', '#0000FF']
+finetune_output = os.path.join(os.path.dirname(__file__), 'finetune_output_mixup')
+
+from finetune import refine_annotations, all_pseudo_annotations, get_annotation_dict, all_annotation_dict, finetune_simple_trainer_run_step, FinetuneTrainer
+
+
+# wrap detectron2/detectron2/data/dataset_mapper.py:DatasetMapper
+# include score information in the mapped dataset, later be used for adjusting per-bbox weights
+class DatasetMapperMixup(detectron2.data.DatasetMapper):
+    def __call__(self, dataset_dict):
+        '''
+        Args:
+            dataset_dict (dict): Metadata of one image, in Detectron2 Dataset format.
+        Returns:
+            dict: a format that builtin models in detectron2 accept
+        '''
+        dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
+        # USER: Write your own image loading if it's not from a file
+        image = np.array(detectron2.data.detection_utils.read_image(dataset_dict['file_name'], format=self.image_format))
+        if 'mixup_src_images' in dataset_dict and random.uniform(0.0, 1.0) < self.mixup_p:
+            mixup_src_dict = dataset_dict['mixup_src_images'][random.randrange(0, len(dataset_dict['mixup_src_images']))]
+            src_image = detectron2.data.detection_utils.read_image(mixup_src_dict['file_name'], format=self.image_format)
+            assert src_image.shape == image.shape
+
+            # import matplotlib.patches as patches
+            # _, axes = plt.subplots(2, 2); axes = axes.reshape(-1)
+            # axes[0].set_title('%s %s %s' % (dataset_dict['file_name'], image.shape, image.dtype)); axes[0].imshow(image)
+            # axes[1].set_title('%s %s %s' % (mixup_src_dict['file_name'], src_image.shape, src_image.dtype)); axes[1].imshow(src_image)
+
+            src_annotations = mixup_src_dict['annotations']
+            random.shuffle(src_annotations)
+            src_annotations = src_annotations[: max(1, int(self.mixup_r * len(src_annotations)))]
+            for ann in src_annotations:
+                assert ann['bbox_mode'] == BoxMode.XYXY_ABS
+                if not self.mixup_random_position:
+                    x1, y1, x2, y2 = map(int, ann['bbox'])
+                    x1, y1, x2, y2 = map(lambda x: 0 if x < 0 else x, [x1, y1, x2, y2])
+                    image[y1 : y2, x1 : x2] = src_image[y1 : y2, x1 : x2]
+                else:
+                    x1, y1, x2, y2 = map(int, ann['bbox'])
+                    x1, y1, x2, y2 = map(lambda x: 1 if x < 1 else x, [x1, y1, x2, y2])
+                    x2, y2 = min(image.shape[1], max(x2, x1 + 1)), min(image.shape[0], max(y2, y1 + 1))
+                    x_shift, y_shift = np.random.randint(-1 * x1, image.shape[1] - x2), np.random.randint(-1 * y1, image.shape[0] - y2)
+                    image[y1 + y_shift : y2 + y_shift, x1 + x_shift : x2 + x_shift] = src_image[y1 : y2, x1 : x2]
+                    ann['bbox'] = [x1 + x_shift, y1 + y_shift, x2 + x_shift, y2 + y_shift]
+            annotations_trimmed = []
+            for ann in dataset_dict['annotations']:
+                assert ann['bbox_mode'] == BoxMode.XYXY_ABS
+                _trim = False
+                for ann2 in src_annotations:
+                    if intersect_ratios(ann['bbox'], ann2['bbox'])[0] >= self.mixup_overlap_thres or bbox_inside(ann['bbox'], ann2['bbox']):
+                        _trim = True
+                        break
+                if not _trim:
+                    annotations_trimmed.append(ann)
+            for ann in src_annotations:
+                annotations_trimmed.append(ann)
+            dataset_dict['annotations'] = annotations_trimmed
+
+            # axes[2].imshow(image)
+            # for ann in dataset_dict['annotations']:
+            #     (x1, y1, x2, y2), k = ann['bbox'], ann['category_id']
+            #     rect = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=1, edgecolor=bbox_rgbs[k], facecolor='none')
+            #     axes[2].add_patch(rect)
+            # plt.tight_layout()
+            # plt.show()
+
+        detectron2.data.detection_utils.check_image_size(dataset_dict, image)
+        # USER: Remove if you don't do semantic/panoptic segmentation.
+        if 'sem_seg_file_name' in dataset_dict:
+            sem_seg_gt = utils.read_image(dataset_dict.pop('sem_seg_file_name'), 'L').squeeze(2)
+        else:
+            sem_seg_gt = None
+        aug_input = detectron2.data.transforms.AugInput(image, sem_seg=sem_seg_gt)
+        transforms = self.augmentations(aug_input)
+        image, sem_seg_gt = aug_input.image, aug_input.sem_seg
+
+        image_shape = image.shape[:2]  # h, w
+        # Pytorch's dataloader is efficient on torch.Tensor due to shared-memory,
+        # but not efficient on large generic data structures due to the use of pickle & mp.Queue.
+        # Therefore it's important to use torch.Tensor.
+        dataset_dict['image'] = torch.as_tensor(np.ascontiguousarray(image.transpose(2, 0, 1)))
+        if sem_seg_gt is not None:
+            dataset_dict['sem_seg'] = torch.as_tensor(sem_seg_gt.astype('long'))
+
+        # USER: Remove if you don't use pre-computed proposals.
+        # Most users would not need this feature.
+        if self.proposal_topk is not None:
+            detectron2.data.detection_utils.transform_proposals(
+                dataset_dict, image_shape, transforms, proposal_topk=self.proposal_topk
+            )
+        if not self.is_train:
+            # USER: Modify this if you want to keep them for some reason.
+            dataset_dict.pop('annotations', None)
+            dataset_dict.pop('sem_seg_file_name', None)
+            return dataset_dict
+        if 'annotations' in dataset_dict:
+            self._transform_annotations(dataset_dict, transforms, image_shape)
+        return dataset_dict
+
+    @staticmethod
+    def create_from_sup(mapper, mixup_p, mixup_r, mixup_overlap_thres, mixup_random_position):
+        assert isinstance(mapper, detectron2.data.DatasetMapper), 'mapper is not detectron2.data.DatasetMapper'
+        mapper.__class__ = DatasetMapperMixup
+        mapper.mixup_p, mapper.mixup_r, mapper.mixup_overlap_thres, mapper.mixup_random_position = mixup_p, mixup_r, mixup_overlap_thres, mixup_random_position
+        return mapper
+
+
+def adapt(args):
+    assert 0 <= args.mixup_p <= 1 and 0 <= args.mixup_r <= 1, '%s %s' % (args.mixup_p, args.mixup_r)
+    assert args.hold > 0
+    _tensor = torch.ones(max(1, int(args.hold * 1000)), 1000, 1000, dtype=torch.int8).cuda()
+    _args = copy.deepcopy(args)
+    _args.smallscale = False
+    desc_cocovalid, dst_cocovalid = 'mscoco2017_valid_remap', get_coco_dicts(_args, 'valid')
+    if args.not_eval_coco:
+        print('use dummy MSCOCO2017-validation during training')
+        dst_cocovalid = dst_cocovalid[:5] + dst_cocovalid[-5:]
+
+    if args.id in video_id_list:
+        desc_manual_valid, dst_manual_valid = '%s_manual' % args.id, get_annotation_dict(args)
+        desc_pseudo_anno = 'refine_' + '_'.join(args.anno_models)
+        dst_pseudo_anno = refine_annotations(args)[0]
+        # include sample mixup sources, this increases RAM usage
+        dst_pseudo_anno_copy = copy.deepcopy(dst_pseudo_anno)
+        for im in tqdm.tqdm(dst_pseudo_anno, ascii=True, desc='populating mixup sources'):
+            for _ in range(0, 3):
+                im['mixup_src_images'] = [dst_pseudo_anno_copy[random.randrange(0, len(dst_pseudo_anno_copy))]]
+        del dst_pseudo_anno_copy
+        if args.train_on_coco:
+            random.seed(42)
+            dst_cocotrain = get_coco_dicts(_args, 'train')
+            random.shuffle(dst_cocotrain)
+            dst_pseudo_anno = dst_pseudo_anno + dst_cocotrain[:len(dst_pseudo_anno)]
+            desc_pseudo_anno = desc_pseudo_anno + '_cocotrain'
+            print('include MSCOCO2017 training images, totally %d images' % len(dst_pseudo_anno))
+        for i in range(0, len(dst_pseudo_anno)):
+            dst_pseudo_anno[i]['image_id'] = i + 1
+    elif args.id == 'compound':
+        import functools
+        args.id = '_compound'
+        desc_manual_valid, dst_manual_valid = '%s_manual' % args.id, all_annotation_dict(args)
+        desc_pseudo_anno = 'refine_' + '_'.join(args.anno_models)
+        dst_pseudo_anno = all_pseudo_annotations(args)[0]
+        # include sample mixup sources, this increases RAM usage
+        for dst_v in tqdm.tqdm(dst_pseudo_anno, ascii=True, desc='populating mixup sources'):
+            dst_v_copy = copy.deepcopy(dst_v)
+            for im in tqdm.tqdm(dst_v, ascii=True):
+                for _ in range(0, 3):
+                    im['mixup_src_images'] = [dst_v_copy[random.randrange(0, len(dst_v_copy))]]
+            del dst_v_copy
+        dst_pseudo_anno = functools.reduce(lambda x, y: x + y, dst_pseudo_anno)
+        if args.train_on_coco:
+            random.seed(42)
+            dst_cocotrain = get_coco_dicts(_args, 'train')
+            dst_cocotrain = dst_cocotrain * (len(dst_pseudo_anno) // len(dst_cocotrain) + 1)
+            random.shuffle(dst_cocotrain)
+            dst_pseudo_anno = dst_pseudo_anno + dst_cocotrain[:len(dst_pseudo_anno)]
+            desc_pseudo_anno = desc_pseudo_anno + '_cocotrain'
+            print('include MSCOCO2017 training images, totally %d images' % len(dst_pseudo_anno))
+        for i in range(0, len(dst_pseudo_anno)):
+            dst_pseudo_anno[i]['image_id'] = i + 1
+    else:
+        raise NotImplementedError
+
+    del _tensor
+    gc.collect()
+
+    DatasetCatalog.register(desc_cocovalid, lambda: dst_cocovalid)
+    MetadataCatalog.get(desc_cocovalid).thing_classes = thing_classes
+    DatasetCatalog.register(desc_manual_valid, lambda: dst_manual_valid)
+    MetadataCatalog.get(desc_manual_valid).thing_classes = thing_classes
+    DatasetCatalog.register(desc_pseudo_anno, lambda: dst_pseudo_anno)
+    MetadataCatalog.get(desc_pseudo_anno).thing_classes = thing_classes
+
+    if args.ckpt is not None and os.access(args.ckpt, os.R_OK):
+        print('loading checkpoint:', args.ckpt)
+        cfg = get_cfg_base_model(args.model, ckpt=args.ckpt)
+    else:
+        cfg = get_cfg_base_model(args.model)
+    cfg.DATALOADER.NUM_WORKERS = args.num_workers
+    cfg.OUTPUT_DIR = finetune_output
+
+    cfg.SOLVER.IMS_PER_BATCH = args.image_batch_size
+    cfg.SOLVER.BASE_LR = args.lr
+    cfg.SOLVER.WARMUP_ITERS = args.iters // 10
+    cfg.SOLVER.GAMMA = 0.5
+    cfg.SOLVER.STEPS = (args.iters // 3, args.iters * 2 // 3)
+    cfg.SOLVER.MAX_ITER = args.iters
+    cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = args.roi_batch_size
+    cfg.TEST.EVAL_PERIOD = args.eval_interval
+    cfg.DATASETS.TRAIN = (desc_pseudo_anno,)
+    cfg.DATASETS.TEST = (desc_manual_valid, desc_cocovalid)
+    print(cfg)
+
+    import detectron2.evaluation.evaluator
+    detectron2.evaluation.evaluator.evaluate_interval_n = 200
+    import detectron2.engine.defaults
+    detectron2.engine.defaults.default_trainer_log_period = 200
+
+    trainer = FinetuneTrainer(cfg)
+    assert isinstance(trainer._trainer, SimpleTrainer), 'trainer class mismatch'
+    trainer._trainer.run_step = types.MethodType(finetune_simple_trainer_run_step, trainer._trainer)
+    assert isinstance(trainer.data_loader.dataset.dataset.dataset._map_func._obj, detectron2.data.DatasetMapper), 'mapper class mismatch'
+    trainer.data_loader.dataset.dataset.dataset._map_func._obj = DatasetMapperMixup.create_from_sup(trainer.data_loader.dataset.dataset.dataset._map_func._obj, args.mixup_p, args.mixup_r, args.mixup_overlap_thres, args.mixup_random_position)
+    trainer.resume_or_load(resume=False)
+
+    prefix = 'adapt%s_%s_anno_%s%s_mixup%s' % (args.id, args.model, desc_pseudo_anno, '' if args.fn_max_samples <= 0 else '_fn%.4f_%d' % (args.fn_min_score, args.fn_max_samples), '_random' if args.mixup_random_position else '')
+    results_0 = {}
+    for idx, dataset_name in enumerate(trainer.cfg.DATASETS.TEST):
+        print('Evaluate on %s' % dataset_name)
+        data_loader = trainer.build_test_loader(trainer.cfg, dataset_name)
+        evaluator = trainer.build_evaluator(trainer.cfg, dataset_name)
+        results_0[dataset_name] = inference_on_dataset(trainer.model, data_loader, evaluator)
+    del data_loader, evaluator
+    trainer.eval_results_all[0] = results_0
+    trainer.train()
+
+    if not detectron2.utils.comm.is_main_process():
+        print('in sub-process, exiting')
+        return
+
+    with open(os.path.join(args.outputdir, prefix + '.json'), 'w') as fp:
+        json.dump({'results': trainer.eval_results_all, 'args': vars(args), 'lr_history': trainer._trainer.lr_history, 'loss_history': trainer._trainer.loss_history}, fp)
+    m = trainer.model
+    if isinstance(m, torch.nn.DataParallel) or isinstance(m, torch.nn.parallel.DistributedDataParallel):
+        print('unwrap data parallel')
+        m = m.module
+    torch.save(m.state_dict(), os.path.join(args.outputdir, prefix + '.pth'))
+
+    aps, lr_history, loss_history = trainer.eval_results_all, trainer._trainer.lr_history, trainer._trainer.loss_history
+    iter_list = sorted(list(aps.keys()))
+    dst_list = [desc_cocovalid, desc_manual_valid]
+    assert len(dst_list) == 2
+    dst_list = {k: {'mAP': [], 'AP50': []} for k in dst_list}
+    for i in iter_list:
+        for k in dst_list:
+            dst_list[k]['mAP'].append(aps[i][k]['bbox']['AP'])
+            dst_list[k]['AP50'].append(aps[i][k]['bbox']['AP50'])
+
+    lr_history = np.array([[x['iter'], x['lr']] for x in lr_history])
+    loss_history_dict, smooth_L = {}, 32
+    for loss_key in loss_history[0]['loss']:
+        loss_history_dict[loss_key] = np.array([[x['iter'], x['loss'][loss_key]] for x in loss_history])
+        for i in range(smooth_L, loss_history_dict[loss_key].shape[0]):
+            loss_history_dict[loss_key][i, 1] = loss_history_dict[loss_key][i - smooth_L : i + 1, 1].mean()
+        loss_history_dict[loss_key] = loss_history_dict[loss_key][smooth_L + 1 :, :]
+
+    plt.figure(figsize=(20, 10))
+    plt.subplot(1, 2, 1)
+    plt.plot(lr_history[:, 0], lr_history[:, 1] / lr_history[:, 1].max(), linestyle='--', color='#000000')
+    plt.plot(iter_list, np.array(dst_list[desc_cocovalid]['AP50']) / 100, linestyle='--', marker='x', color='#FF0000')
+    plt.plot(iter_list, np.array(dst_list[desc_cocovalid]['mAP']) / 100, linestyle='--', marker='x', color='#0000FF')
+    plt.plot(iter_list, np.array(dst_list[desc_manual_valid]['AP50']) / 100, linestyle='-', marker='o', color='#FF0000')
+    plt.plot(iter_list, np.array(dst_list[desc_manual_valid]['mAP']) / 100, linestyle='-', marker='o', color='#0000FF')
+    plt.legend(['lr ($\\times$%.1e)' % lr_history[:, 1].max(), 'MSCOCO Valid AP50', 'MSCOCO Valid mAP', 'Manual Valid AP50', 'Manual Valid mAP'])
+    plt.grid(True)
+    plt.xlim(max(iter_list) * -0.02, max(iter_list) * 1.02)
+    plt.ylim(0, 1.02)
+    plt.xlabel('Training Iterations')
+    plt.title('AP')
+
+    plt.subplot(1, 2, 2)
+    colors, color_i = ['#EE0000', '#00EE00', '#0000EE', '#AAAA00', '#00AAAA', '#AA00AA', '#000000'], 0
+    legends = []
+    for loss_key in loss_history_dict:
+        plt.plot(loss_history_dict[loss_key][:, 0], loss_history_dict[loss_key][:, 1], linestyle='-', color=colors[color_i])
+        legends.append(loss_key)
+        color_i += 1
+    plt.legend(legends)
+    plt.grid(True)
+    plt.xlim(max(iter_list) * -0.02, max(iter_list) * 1.02)
+    plt.xlabel('Training Iterations')
+    plt.title('losses')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(args.outputdir, prefix + '.pdf'))
+    exit(0)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Finetune Script')
+    parser.add_argument('--opt', type=str, help='option')
+    parser.add_argument('--id', type=str, default='', choices=video_id_list+['', 'compound'], help='video ID')
+    parser.add_argument('--model', type=str, help='detection model')
+    parser.add_argument('--ckpt', type=str, default=None, help='weights checkpoint of model')
+    parser.add_argument('--outputdir', type=str, default='.')
+
+    parser.add_argument('--anno_models', nargs='+', default=[], help='models used for pseudo annotation (detection + tracking)')
+    parser.add_argument('--cocodir', type=str, help='MSCOCO2017 directory')
+    parser.add_argument('--not_eval_coco', type=bool, default=False, help='skip evaluation on MSCOCO2017 during training')
+    parser.add_argument('--train_on_coco', type=bool, default=False, help='include MSCOCO2017 training images in training')
+    parser.add_argument('--refine_det_score_thres', type=float, default=0.5, help='minimum detection score in pseudo annotation')
+    parser.add_argument('--refine_iou_thres', type=float, default=0.85, help='IoU threshold to merge boxes')
+    parser.add_argument('--refine_remove_no_sot', type=bool, default=False, help='remove images without tracking results')
+
+    parser.add_argument('--fn_min_score', type=float, default=0.99, help='minimum objectiveness score of false negatives')
+    parser.add_argument('--fn_max_samples', type=int, default=-1, help='maximum number of false negatives per frame')
+    parser.add_argument('--fn_max_samples_det_p', type=float, default=0.5, help='maximum number of false negatives per frame as percentage of number of detections')
+    parser.add_argument('--fn_min_area', type=float, default=50, help='minimum area of false negative boxes')
+    parser.add_argument('--fn_max_width_p', type=float, default=0.3333, help='maximum percentage width of false negative boxes')
+    parser.add_argument('--fn_max_height_p', type=float, default=0.3333, help='maximum percentage height of false negative boxes')
+
+    parser.add_argument('--mixup_p', type=float, default=0.3, help='probability of applying mixup to an image')
+    parser.add_argument('--mixup_r', type=float, default=0.5, help='ratio of mixed-up bounding boxes')
+    parser.add_argument('--mixup_overlap_thres', type=float, default=0.65, help='above this threshold, overwritten boxes by mixup are removed')
+    parser.add_argument('--mixup_random_position', type=bool, default=False, help='randomly position patch')
+
+    parser.add_argument('--iters', type=int, help='total training iterations')
+    parser.add_argument('--eval_interval', type=int, help='interval for evaluation')
+    parser.add_argument('--image_batch_size', default=4, type=int)
+    parser.add_argument('--roi_batch_size', default=128, type=int)
+    parser.add_argument('--lr', default=1e-4, type=float)
+    parser.add_argument('--num_workers', default=0, type=int)
+    parser.add_argument('--refine_visualize_workers', default=0, type=int)
+    parser.add_argument('--eval_skip_coco', default=False, type=bool)
+    parser.add_argument('--eval_outputfile', default=None, type=str)
+    parser.add_argument('--hold', default=0.005, type=float)
+
+    parser.add_argument('--ddp_num_gpus', type=int, default=1)
+    parser.add_argument('--ddp_port', type=int, default=50405)
+    args = parser.parse_args()
+    args.anno_models = sorted(list(set(args.anno_models)))
+    print(args)
+
+    if not os.access(finetune_output, os.W_OK):
+        os.mkdir(finetune_output)
+    assert os.path.isdir(finetune_output)
+    assert os.path.isdir(args.outputdir)
+    assert os.access(args.outputdir, os.W_OK)
+
+    if args.opt == 'adapt':
+        if args.ddp_num_gpus <= 1:
+            adapt(args)
+        else:
+            from detectron2.engine import launch
+            launch(adapt, args.ddp_num_gpus, num_machines=1, machine_rank=0, dist_url='tcp://127.0.0.1:%d' % args.ddp_port, args=(args,))
+    else:
+        pass
+    exit(0)
+
+
+'''
+conda deactivate && conda activate detectron2
+cd /nfs/detection/zekun/Intersections/scripts/baseline
+
+python finetune.py --id 001 --opt refine --anno_models r50-fpn-3x
+python finetune.py --id 001 --opt adapt --model r50-fpn-3x --anno_models r50-fpn-3x r50-c4-3x r101-fpn-3x x101-fpn-3x --cocodir ../../../MSCOCO2017 --num_workers 2 --iters 25000 --eval_interval 1500
+python finetune.py --opt eval --id 001 --cocodir ../../../MSCOCO2017 --model r50-fpn-3x --ckpt adapt_r50-fpn-3x_anno_refine_r50-fpn-3x.pth
+
+python finetune.py --id 001 --opt adapt --model r50-fpn-3x --anno_models r50-fpn-3x r101-fpn-3x --cocodir ../../../MSCOCO2017 --num_workers 4 --iters 20000 --eval_interval 1800 --train_on_coco 1 --image_batch_size 4
+
+
+tests
+
+python finetune.py --id 050 --opt adapt --model r50-fpn-3x --anno_models r50-fpn-3x r101-fpn-3x --cocodir ../../../MSCOCO2017 --num_workers 0 --iters 300 --eval_interval 30 --train_on_coco 1 --image_batch_size 2 --not_eval_coco 1 --lr 0.01 --not_use_mod_rcnn 1
+python finetune.py --id 050 --opt adapt --model r50-fpn-3x --anno_models r50-fpn-3x r101-fpn-3x --cocodir ../../../MSCOCO2017 --num_workers 0 --iters 300 --eval_interval 30 --train_on_coco 1 --image_batch_size 2 --not_eval_coco 1 --lr 0.01 --gmm_max_samples 7000
+
+python finetune_mixup.py  --id 001 --opt adapt --model r50-fpn-3x --anno_models r101-fpn-3x --cocodir ../../../MSCOCO2017 --num_workers 0 --iters 300 --eval_interval 30 --train_on_coco 1 --image_batch_size 2 --not_eval_coco 1 --lr 0.01 --mixup_p 0.5 --mixup_r 0.5 --mixup_iou_thres 0.25
+'''

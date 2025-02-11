@@ -1,0 +1,122 @@
+[
+  {
+    "model": "r50-c4-3x",
+    "type": "official",
+    "merge": "COCO-Detection/faster_rcnn_R_50_C4_3x.yaml",
+    "ckpt": "mscoco2017_remap_r50-c4-3x.pth",
+    "sha1": "fac805c2434db02b560977a1cc36971b8daee05a",
+    "sha512": "5775baac9a2a38e9c0f4ccf7f7fc8e4e301333f3d3472c4e4ff12906544015d1af0dca8cc9f3c1301ae1b75b9aec1abf3d2a303e84f0302c539c3ac0ab82ede7"
+  },
+  {
+    "model": "r50-fpn-3x",
+    "type": "official",
+    "merge": "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_r50-fpn-3x.pth",
+    "sha1": "7b3bc0c4e5769d74625381636a1db6a77b944a04",
+    "sha512": "8298e547196badc99088ddf1b4bbad7c9a656ab46062bcea70332e14a9694d85eb8a96f3d880d48be1ff08f13b1251cef5f2c46ed6984155d1d3b663b0fa7feb"
+  },
+  {
+    "model": "r101-fpn-3x",
+    "type": "official",
+    "merge": "COCO-Detection/faster_rcnn_R_101_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_r101-fpn-3x.pth",
+    "sha1": "a84eb63bfc559dcb22b6dd1ca118f91f29d52de9",
+    "sha512": "cc23ce8015f4931a6a97b42dd7327dc572c0ff0ccc765d9513b1cbed2a6a5442c2506c42e6f7b36e4a146435c76f842625aaaea1d525940ec963892e1f26ff22"
+  },
+  {
+    "model": "x101-fpn-3x",
+    "type": "official",
+    "merge": "COCO-Detection/faster_rcnn_X_101_32x8d_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_x101-fpn-3x.pth",
+    "sha1": "4f335a4afc3981ecd52a59726e3e3c6a180823fa",
+    "sha512": "4773cdc1cdf6f398be2c8bec60594a0b21d6d20346ccefaaa3e467fbca19ff958b7c92217699b37c5f5a39fb25f17eb5d3a95651bc1e6db28d173fbac5eb01ce"
+  },
+  {
+    "model": "r18-fpn-3x",
+    "type": "custom",
+    "merge": "faster_rcnn_R_18_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_r18-fpn-3x.pth",
+    "sha1": "bc33e7597182c9bf4be5fb4a6f3fdd80bfa24b08",
+    "sha512": "ea089d7cbc6f67446cee24ebf94fa5dec5a710ce4a1ecb30ef1a5d13dcb7be157171cfc8f9ba2c24feec20319753c9c87f2209e512646a38bd7330261af0294f"
+  },
+  {
+    "model": "r34-fpn-3x",
+    "type": "custom",
+    "merge": "faster_rcnn_R_34_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_r34-fpn-3x.pth",
+    "sha1": "be0f7fcf75597e7d434ce1c3562d267ba4724c28",
+    "sha512": "872b63084d49632900d436664c8f837ed87b91233eaeebd8da88465e6a9aa8aef40fd9d03749a6df219408f3f73d6e8701607bf8bfac67f0791c5454cc9186b6"
+  },
+  {
+    "model": "r152-fpn-3x",
+    "type": "custom",
+    "merge": "faster_rcnn_R_152_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_r152-fpn-3x.pth",
+    "sha1": "b6f0015b5a60fc0699e4f907cb8f5dada89224c1",
+    "sha512": "eb06eaf97f722b22eb8882e7843a5858b7a6ff45fa970b3e466d37299026a951a74c6fa1a04f8f3a73a05360e425ba714c6499e9580b5250ef8d2323681c826e"
+  },
+  {
+    "model": "x50-fpn-3x",
+    "type": "custom",
+    "merge": "faster_rcnn_X_50_32x4d_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_x50-fpn-3x.pth",
+    "sha1": "901ffcd19be470bd0222df7f1f543d6d8c061fe0",
+    "sha512": "33d8aa140e3d9c685506d21f93b99ea3167082869f725dc4030765b18f06900db9782cefa16c39ea6f674fc66407f00e901108fc77220e3a355e765bf95efb70"
+  },
+  {
+    "model": "mask-r50-fpn-3x",
+    "type": "official",
+    "merge": "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_mask-r50-fpn-3x.pth",
+    "sha1": "14c57bf11e15c08c2b16b1c807af063daac482f5",
+    "sha512": "08c450051c1abe64382d9aaa691b553ea593a3eb20dd45cbd87f91325bb6adc277ff3bd2f51f195a1215a95826fc254f3eefd98112cdea03d268906ed5d92dd2"
+  },
+  {
+    "model": "mask-r101-fpn-3x",
+    "type": "official",
+    "merge": "COCO-InstanceSegmentation/mask_rcnn_R_101_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_mask-r101-fpn-3x.pth",
+    "sha1": "5fd8ca554a3425d7ce361505779cb610b81bc98f",
+    "sha512": "c8496185b8f7953f3999725d0db9bb0f011e9fc7eba20a53e899e4f9ff81f6146be0013a0272e11013aec17c6c08057e4403a736e9c2d2a3f5e36b11336b8b12"
+  },
+  {
+    "model": "mask-x101-fpn-3x",
+    "type": "official",
+    "merge": "COCO-InstanceSegmentation/mask_rcnn_X_101_32x8d_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_mask-x101-fpn-3x.pth",
+    "sha1": "b671753f16f97813eab7dca4c953cdea43072e4f",
+    "sha512": "1fc99f5f43bd277cd58c879f19445de46107f611991756aef9e4ceeb7763d03def71accbb63677e9d58283553785550d7bb75f718cb787b36253032483e182f3"
+  },
+  {
+    "model": "mask-r18-fpn-3x",
+    "type": "custom",
+    "merge": "mask_rcnn_R_18_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_mask-r18-fpn-3x.pth",
+    "sha1": "07a4047c1b2c14eb78e22ea33aa91ec0d974328f",
+    "sha512": "4929f6b5b826df7578e833266378eb506caa2fb338a968ef21ef4d86332d800691203e49d396b5a51aff4716c72366ae84ae2e3316b94652dd47fcc1916666ae"
+  },
+  {
+    "model": "mask-r34-fpn-3x",
+    "type": "custom",
+    "merge": "mask_rcnn_R_34_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_mask-r34-fpn-3x.pth",
+    "sha1": "cd995eada9f78144d18aaecbeefaeeb20d0bee7c",
+    "sha512": "54897da846a21d1e3141701572a8f4808d80243deb079d379a10419013a22fc35db96cd45b08f96c9fb4028d15d36772e099caa690a55902ff130e47478dc243"
+  },
+  {
+    "model": "mask-r152-fpn-3x",
+    "type": "custom",
+    "merge": "mask_rcnn_R_152_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_mask-r152-fpn-3x.pth",
+    "sha1": "0c72b025a8c70cf76d9e6c552f8075b8165f71b6",
+    "sha512": "1715cfff99119788611f7498c389ffcee70e7fe959aeeb61a36c3788e65eccf16dd33ba9e6baadcb6f314d7f3164231fc886a3729b86c2dc8f3cb5a80d79b7f0"
+  },
+  {
+    "model": "mask-x50-fpn-3x",
+    "type": "custom",
+    "merge": "mask_rcnn_X_50_32x4d_FPN_3x.yaml",
+    "ckpt": "mscoco2017_remap_mask-x50-fpn-3x.pth",
+    "sha1": "78b4abed9e8f36a23ece9c4156b520f36453363c",
+    "sha512": "bf5b529c851a94a345532e5eb6b2857c8ac28652d99fb966548009140a7a7c5d71e27895198a7a9adf0bbe9c365226ac5ff73c2883e8474e4ebfa7484157c799"
+  }
+]

@@ -1,0 +1,16 @@
+python inference_server_simulate_dino.py \
+    --train_whole 1 \
+    --opt adapt \
+    --model r101-fpn-3x \
+    --ckpt ../../models/dino_5scale_remap_orig.pth \
+    --config ../../configs/dino_5scale.yaml \
+    --tag vanilla \
+    --iters 40000 \
+    --eval_interval 2000 \
+    --save_interval 2000 \
+    --image_batch_size 4 \
+    --num_workers 4 \
+    --outputdir ./dino_x1_test_prompt_add_deep_lr10 \
+    --lr 10 \
+    --refine_det_score_thres 0.3 \
+    --num_prompt 10000

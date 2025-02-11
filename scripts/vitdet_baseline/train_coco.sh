@@ -1,0 +1,13 @@
+python inference_server_simulate_vitdet.py \
+    --train_whole 1 \
+    --opt adapt \
+    --model r101-fpn-3x \
+    --ckpt ./vit_b_maskrcnn.pth \
+    --tag vanilla \
+    --iters 5000 \
+    --eval_interval 1000 \
+    --save_interval 1000 \
+    --image_batch_size 4 \
+    --num_workers 4 \
+    --outputdir ./coco_test \
+    --lr 1e-4 

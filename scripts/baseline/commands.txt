@@ -1,0 +1,53 @@
+cd /nfs/detection/zekun/Intersections/scripts/baseline
+cd /nfs/bigtoken/add_disk0/zekun/Intersections/scripts/baseline
+conda deactivate && conda activate detectron2
+cd /mnt/raid/data/zekun/Intersections/scripts/baseline/
+cd /data/add_disk0/zekun/Intersections/scripts/baseline
+cd D:\_E\Datasets\Intersections\scripts\baseline
+cd /mnt/e/Datasets/Intersections/scripts && conda deactivate && conda activate detectron2
+
+CUDA_VISIBLE_DEVICES=0,2 python finetune_wdiff_midfusion.py --id ### --opt adapt --model r101-fpn-3x --anno_models r50-fpn-3x r101-fpn-3x --ckpt ../../models/###### --cocodir ../../../MSCOCO2017 --iters 20000 --eval_interval 1800 --train_on_coco 1 --image_batch_size 4 --num_workers 4
+
+nohup python run_experiments.py --opt distillfasterrcnnroi --gpus 0 1 3 --hold 20 --model r101-fpn-3x --ids  &> log_run_distill_faster_rcnn_roi_bigtoken_0_1_3.log &
+scp -P 130 zekun@130.245.4.111:/data/add_disk0/zekun/Intersections/scripts/baseline/distill_r101-fpn-3x*roi* F:\intersections_results\cvpr24\distill_faster_rcnn_roi_continue\
+mv -v distill_r101-fpn-3x_*roi* distill_faster_rcnn_roi_continue/
+python finetune_faster_rcnn_roi_distill.py --model r101-fpn-3x --opt eval --ckpts_dir F:\intersections_results\cvpr24\distill_faster_rcnn_roi_continue\
+
+nohup python run_experiments.py --opt distillx2teach --gpus 0 1 2 --hold 0.0005 --model r101-fpn-3x --ids  &> log_run_distill_x2_teach_bigfovea_0_1_2.log &
+scp -P 130 zekun@130.245.4.111:/nfs/detection/zekun/Intersections/scripts/baseline/distill_r101-fpn-3x*anno* F:\intersections_results\cvpr24\distill_faster_rcnn_x2_teach\
+mv -v distill_r101-fpn-3x*anno* /nfs/bigtoken/add_disk0/zekun/Intersections/scripts/baseline/distill_faster_rcnn_x2_teach/
+python finetune_faster_rcnn_x2_teach.py --model r101-fpn-3x --opt eval --ckpts_dir F:\intersections_results\cvpr24\distill_faster_rcnn_x2_teach\
+
+zip pdf_json.zip *pdf *json
+for I in 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 ; do zip -0 pth_${I}.zip adapt${I}*.pth ; done
+for Z in `ls *.zip` ; do gdrive upload -p "1de-dz80R9vfrN3il7ZzsQKhUzckFmgMj" ${Z} ; done
+
+
+['001', '003', '005', '006', '007', '008', '009', '011', '012', '013', '014', '015', '016', '017', '019', '020', '023', '025', '027', '034', '036', '039', '040', '043', '044', '046', '048', '049', '050', '051', '053', '054', '055', '056', '058', '059', '060', '066', '067', '068', '069', '070', '071', '073', '074', '075', '076', '077', '080', '085', '086', '087', '088', '090', '091', '092', '093', '094', '095', '098', '099', '105', '108', '110', '112', '114', '115', '116', '117', '118', '125', '127', '128', '129', '130', '131', '132', '135', '136', '141', '146', '148', '149', '150', '152', '154', '156', '158', '159', '160', '161', '164', '167', '169', '170', '171', '172', '175', '178', '179']
+
+001 003 005 006 007 008 009 011 012 013 014 015 016 017 019 020 023 025 027 034 036 039 040 043 044 046 048 049 050 051 053 054 055 056 058 059 060 066 067 068 069 070 071 073 074 075 076 077 080 085 086 087 088 090 091 092 093 094 095 098 099 105 108 110 112 114 115 116 117 118 125 127 128 129 130 131 132 135 136 141 146 148 149 150 152 154 156 158 159 160 161 164 167 169 170 171 172 175 178 179
+
+
+python decode_training.py --opt ext --ids 178 179
+nohup python decode_training.py --opt decode --ids 036 039 --procs 4 &
+
+for V in 001 003 005 006 007 008 009 011 012 013 014 015 016 017 019 020 023 025 027 034 036 039 040 043 044 046 048 049 050 051 053 054 055 056 058 059 060 066 067 068 069 070 071 073 074 075 076 077 080 085 086 087 088 090 091 092 093 094 095 098 099 105 108 110 112 114 115 116 117 118 125 127 128 129 130 131 132 135 136 141 146 148 149 150 152 154 156 158 159 160 161 164 167 169 170 171 172 175 178 179 ; do cp -v ${V}/detect_r101-fpn-3x.json.gz ./detect_r101-fpn-3x.json.gz.${V} ; done
+
+for V in 141 146 148 149 150 152 ; do cp -v ${V}/detect_r50-fpn-3x_DiMP.json.gz ./detect_r50-fpn-3x_DiMP.json.gz.${V} ; done
+for V in 141 146 148 149 150 152 ; do cp -v ${V}/detect_r101-fpn-3x_DiMP.json.gz ./detect_r101-fpn-3x_DiMP.json.gz.${V} ; done
+for Z in `ls *zip`; do gdrive upload ${Z} ; done
+
+CUDA_VISIBLE_DEVICES=0 python detect_sot.py --opt sot --id 152 --model r50-fpn-3x --sot_skip 4 --sot_max_length 2 --sot_min_bbox 16 --hold 2.4
+CUDA_VISIBLE_DEVICES=0 python detect_sot.py --opt sot --id 152 --model r101-fpn-3x --sot_skip 4 --sot_max_length 2 --sot_min_bbox 16 --hold 2.4
+
+python finetune.py --id 152 --opt refine --anno_models r50-fpn-3x r101-fpn-3x --refine_visualize_workers 3
+
+CUDA_VISIBLE_DEVICES=0 python det_false_negative_mining.py --opt mine --ids 001 003 &> bigfovea_fn_gpu0.log &
+
+
+CUDA_VISIBLE_DEVICES=0 nohup python train.py --opt train --model resnext101_32x8d --ckpt resnext101_32x8d.pth --batchsize_gpu 32 --rootdir /data/add_disk0/zekun/ILSVRC2012 &> bigfovea_resnext101_32x8d.log &
+287505 loss=1.75, top1=0.5859, top5=0.8138
+
+nohup python hold_VRAM.py --gpu 0 --gb 9.5 &> /dev/null &
+
+for U in zekun zbyang wensheng cristinam kumarak minhhoai shahrukh shahira taosun harry ypchen ruyilian dparedes soura ironman viresh lehhou hengfan hlh0923 jingwei jingyi bingyao qiaomu vhnguyen tqvinh supreeth sagnik leizhou heeyoung mahmudul davidb zexia jiaxiang shilinhu aggelina georgi ruiqi haoyu zelinskylab agraikos srijandas jongwoopark sreeharsha ameya jaideep bjha jishang xiangli yunfan zhenghong lupang peiyao kanchana yifeng kalyan zhilin shisariya ppriyank sfeiz hongxizhu yashfulwani sounakm alrivero suincho ; do sudo adduser ${U} docker ; done

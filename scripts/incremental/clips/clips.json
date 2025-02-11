@@ -1,0 +1,88 @@
+{
+    "meta": {
+        "H": 1080,
+        "W": 1920,
+        "FPS": 30
+    },
+    "days": [
+        [
+            "SantaClausVillage_20221202_144822",
+            "SantaClausVillage_20221202_154822",
+            "SantaClausVillage_20221202_164823",
+            "SantaClausVillage_20221202_174824",
+            "SantaClausVillage_20221202_184825",
+            "SantaClausVillage_20221202_194826",
+            "SantaClausVillage_20221202_204826"
+        ],
+        [
+            "SantaClausVillage_20221203_054830",
+            "SantaClausVillage_20221203_064831",
+            "SantaClausVillage_20221203_074832",
+            "SantaClausVillage_20221203_162931",
+            "SantaClausVillage_20221203_172931",
+            "SantaClausVillage_20221203_182932",
+            "SantaClausVillage_20221203_192932",
+            "SantaClausVillage_20221203_202933",
+            "SantaClausVillage_20221203_212934"
+        ],
+        [
+            "SantaClausVillage_20221204_053832",
+            "SantaClausVillage_20221204_063833",
+            "SantaClausVillage_20221204_083834",
+            "SantaClausVillage_20221204_093834",
+            "SantaClausVillage_20221204_103834",
+            "SantaClausVillage_20221204_123835",
+            "SantaClausVillage_20221204_133835",
+            "SantaClausVillage_20221204_143835",
+            "SantaClausVillage_20221204_163836",
+            "SantaClausVillage_20221204_183837",
+            "SantaClausVillage_20221204_193838"
+        ],
+        [
+            "SantaClausVillage_20221205_063842",
+            "SantaClausVillage_20221205_073843",
+            "SantaClausVillage_20221205_083844",
+            "SantaClausVillage_20221205_093344",
+            "SantaClausVillage_20221205_103346",
+            "SantaClausVillage_20221205_143349",
+            "SantaClausVillage_20221205_153350",
+            "SantaClausVillage_20221205_163352",
+            "SantaClausVillage_20221205_173353",
+            "SantaClausVillage_20221205_183355"
+        ],
+        [
+            "SantaClausVillage_20221206_053401",
+            "SantaClausVillage_20221206_063402",
+            "SantaClausVillage_20221206_073403",
+            "SantaClausVillage_20221206_083403",
+            "SantaClausVillage_20221206_113407",
+            "SantaClausVillage_20221206_123409",
+            "SantaClausVillage_20221206_143410",
+            "SantaClausVillage_20221206_175902",
+            "SantaClausVillage_20221206_185902",
+            "SantaClausVillage_20221206_195902"
+        ]
+    ],
+    "mask": [
+      [
+        0.0,
+        279.65,
+        380.19,
+        268.87,
+        528.07,
+        163.92,
+        498.55,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        1920.0,
+        437.35,
+        1023.31,
+        0.0,
+        1920.0,
+        0.0
+      ]
+    ]
+}

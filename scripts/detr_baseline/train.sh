@@ -1,0 +1,14 @@
+python inference_server_simulate_detr.py \
+    --train_whole 1 \
+    --opt adapt \
+    --model r101-fpn-3x \
+    --ckpt ../../models/detr_remap.pth \
+    --config ../../configs/detr_256_6_6_torchvision.yaml \
+    --tag vanilla \
+    --iters 5000 \
+    --eval_interval 1000 \
+    --save_interval 1000 \
+    --image_batch_size 20 \
+    --num_workers 4 \
+    --outputdir ./detr_001_x1_test \
+    --lr 1e-4 
